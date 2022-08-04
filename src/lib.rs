@@ -543,6 +543,38 @@ pub fn snapshot_rollback(dataset: &str, snapshot: &str) -> Result<bool> {
     Ok(true)
 }
 
+pub fn dataset_clone(snapshot: &str, dataset: &str, force: bool, opts: Option<[&str]>) -> Result<()> {
+    if snapshot.contains('@') {
+        bail!("snapshot {} does not seem to be a snapshot", snapshot);
+    }
+
+    info!("CLONING SNAPSHOT {} TO DATASET: {}", snapshot, dataset);
+
+    let mut cmd = Command::new("/sbin/zfs");
+    cmd.env_clear();
+    cmd.arg("clone");
+
+    if force {
+        cmd.arg("-F");
+    }
+
+    if let Some(opts) = opts {
+        for opt in opts {
+            cmd.arg("-o");
+            cmd.arg(opt);
+        }
+    }
+    cmd.arg(snapshot);
+    cmd.arg(dataset);
+
+    let zfs = cmd.output()?;
+
+    if !zfs.status.success() {
+        let errmsg = String::from_utf8_lossy(&zfs.stderr);
+        bail!("zfs create failed: {}", errmsg);
+    }
+}
+
 pub fn dataset_create(dataset: &str, parents: bool) -> Result<()> {
     if dataset.contains('@') {
         bail!("no @ allowed here");
