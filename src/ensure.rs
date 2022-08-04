@@ -1,16 +1,17 @@
 /*
  * Copyright 2021 Oxide Computer Company
+ * Copyright 2022 OpenFlowLabs
  */
 
-use std::path::{Path, PathBuf};
-use std::fs::{DirBuilder, File};
-use std::os::unix::fs::DirBuilderExt;
-use std::ffi::CString;
-use std::io::{Read, BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
-use jmclib::log::prelude::*;
-use anyhow::{Result, bail, anyhow};
+use anyhow::{anyhow, bail, Result};
 use digest::Digest;
+use log::*;
+use std::ffi::CString;
+use std::fs::{DirBuilder, File};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::fs::DirBuilderExt;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
@@ -57,9 +58,7 @@ impl FileInfo {
 pub fn check<P: AsRef<Path>>(p: P) -> Result<Option<FileInfo>> {
     let name: &str = p.as_ref().to_str().unwrap();
     let cname = CString::new(name.to_string())?;
-    let st = Box::into_raw(Box::new(unsafe {
-        std::mem::zeroed::<libc::stat>()
-    }));
+    let st = Box::into_raw(Box::new(unsafe { std::mem::zeroed::<libc::stat>() }));
     let (r, e, st) = unsafe {
         let r = libc::lstat(cname.as_ptr(), st);
         let e = *libc::___errno();
@@ -113,19 +112,20 @@ pub fn chown<P: AsRef<Path>>(path: P, owner: u32, group: u32) -> Result<()> {
         (r, e)
     };
     if r != 0 {
-        bail!("lchown({}, {}, {}): errno {}", path.as_ref().display(),
-            owner, group, e);
+        bail!(
+            "lchown({}, {}, {}): errno {}",
+            path.as_ref().display(),
+            owner,
+            group,
+            e
+        );
     }
 
     Ok(())
 }
 
-pub fn perms<P: AsRef<Path>>(log: &Logger, p: P, owner: u32, group: u32,
-    perms: u32)
-    -> Result<bool>
-{
+pub fn perms<P: AsRef<Path>>(p: P, owner: u32, group: u32, perms: u32) -> Result<bool> {
     let p = p.as_ref();
-    let log = log.new(o!("path" => p.display().to_string()));
     let mut did_work = false;
 
     let fi = if let Some(fi) = check(p)? {
@@ -140,7 +140,7 @@ pub fn perms<P: AsRef<Path>>(log: &Logger, p: P, owner: u32, group: u32,
      */
     if fi.filetype != FileType::Link && fi.perms != perms {
         did_work = true;
-        info!(log, "perms are {:o}, should be {:o}", fi.perms, perms);
+        info!("perms are {:o}, should be {:o}", fi.perms, perms);
 
         let cname = CString::new(p.to_str().unwrap().to_string())?;
         let (r, e) = unsafe {
@@ -152,30 +152,26 @@ pub fn perms<P: AsRef<Path>>(log: &Logger, p: P, owner: u32, group: u32,
             bail!("lchmod({}, {:o}): errno {}", p.display(), perms, e);
         }
 
-        info!(log, "chmod ok");
+        info!("chmod ok");
     }
 
     match (fi.owner, fi.group) {
         (Id::Id(o), Id::Id(g)) if o == owner && g == group => {
-            info!(log, "ownership already OK ({}:{})", o, g);
+            info!("ownership already OK ({}:{})", o, g);
         }
         (o, g) => {
             did_work = true;
-            info!(log, "ownership wrong ({:?}:{:?}, not {}:{})", o, g,
-                owner, group);
+            info!("ownership wrong ({:?}:{:?}, not {}:{})", o, g, owner, group);
             chown(p, owner, group)?;
 
-            info!(log, "chown ok");
+            info!("chown ok");
         }
     };
 
     Ok(did_work)
 }
 
-pub fn directory<P: AsRef<Path>>(log: &Logger, dir: P, owner: u32,
-    group: u32, mode: u32)
-    -> Result<bool>
-{
+pub fn directory<P: AsRef<Path>>(dir: P, owner: u32, group: u32, mode: u32) -> Result<bool> {
     let dir = dir.as_ref();
     let mut did_work = false;
 
@@ -191,11 +187,8 @@ pub fn directory<P: AsRef<Path>>(log: &Logger, dir: P, owner: u32,
          * Create the directory, and all missing parents:
          */
         did_work = true;
-        info!(log, "creating directory: {}", dir.display());
-        DirBuilder::new()
-            .recursive(true)
-            .mode(mode)
-            .create(dir)?;
+        info!("creating directory: {}", dir.display());
+        DirBuilder::new().recursive(true).mode(mode).create(dir)?;
 
         /*
          * Check the path again, to make sure we have up-to-date information:
@@ -203,7 +196,7 @@ pub fn directory<P: AsRef<Path>>(log: &Logger, dir: P, owner: u32,
         check(dir)?.expect("directory should now exist");
     }
 
-    if perms(log, dir, owner, group, mode)? {
+    if perms(dir, owner, group, mode)? {
         did_work = true;
     }
 
@@ -276,33 +269,42 @@ fn compare<P1: AsRef<Path>, P2: AsRef<Path>>(src: P1, dst: P2) -> Result<bool> {
     }
 }
 
-pub fn removed<P: AsRef<Path>>(log: &Logger, dst: P) -> Result<()> {
+pub fn removed<P: AsRef<Path>>(dst: P) -> Result<()> {
     let dst = dst.as_ref();
 
     if let Some(fi) = check(dst)? {
         match fi.filetype {
             FileType::File | FileType::Link => {
-                info!(log, "file {} exists (as {:?}), removing",
-                    dst.display(), fi.filetype);
+                info!(
+                    "file {} exists (as {:?}), removing",
+                    dst.display(),
+                    fi.filetype
+                );
 
                 std::fs::remove_file(dst)?;
             }
             t => {
-                bail!("file {} exists as {:?}, unexpected type",
-                    dst.display(), t);
+                bail!("file {} exists as {:?}, unexpected type", dst.display(), t);
             }
         }
     } else {
-        info!(log, "file {} does not already exist, skipping removal",
-            dst.display());
+        info!(
+            "file {} does not already exist, skipping removal",
+            dst.display()
+        );
     }
 
     Ok(())
 }
 
-pub fn filestr<P: AsRef<Path>>(log: &Logger, contents: &str, dst: P,
-    owner: u32, group: u32, mode: u32, create: Create) -> Result<bool>
-{
+pub fn filestr<P: AsRef<Path>>(
+    contents: &str,
+    dst: P,
+    owner: u32,
+    group: u32,
+    mode: u32,
+    create: Create,
+) -> Result<bool> {
     let dst = dst.as_ref();
     let mut did_work = false;
 
@@ -312,13 +314,11 @@ pub fn filestr<P: AsRef<Path>>(log: &Logger, contents: &str, dst: P,
          */
         match create {
             Create::IfMissing if fi.filetype == FileType::File => {
-                info!(log, "file {} exists, skipping population",
-                    dst.display());
+                info!("file {} exists, skipping population", dst.display());
                 false
             }
             Create::IfMissing if fi.filetype == FileType::Link => {
-                warn!(log, "symlink {} exists, skipping population",
-                    dst.display());
+                warn!("symlink {} exists, skipping population", dst.display());
                 false
             }
             Create::IfMissing => {
@@ -326,8 +326,11 @@ pub fn filestr<P: AsRef<Path>>(log: &Logger, contents: &str, dst: P,
                  * Avoid clobbering an unexpected entry when we have been asked
                  * to preserve in the face of modifications.
                  */
-                bail!("{} should be a file, but is a {:?}",
-                    dst.display(), fi.filetype);
+                bail!(
+                    "{} should be a file, but is a {:?}",
+                    dst.display(),
+                    fi.filetype
+                );
             }
             Create::Always if fi.filetype == FileType::File => {
                 /*
@@ -335,12 +338,13 @@ pub fn filestr<P: AsRef<Path>>(log: &Logger, contents: &str, dst: P,
                  * what we expect.
                  */
                 if comparestr(contents, dst)? {
-                    info!(log, "file {} exists, with correct contents",
-                        dst.display());
+                    info!("file {} exists, with correct contents", dst.display());
                     false
                 } else {
-                    warn!(log, "file {} exists, with wrong contents, unlinking",
-                        dst.display());
+                    warn!(
+                        "file {} exists, with wrong contents, unlinking",
+                        dst.display()
+                    );
                     std::fs::remove_file(dst)?;
                     true
                 }
@@ -350,20 +354,23 @@ pub fn filestr<P: AsRef<Path>>(log: &Logger, contents: &str, dst: P,
                  * We found a file type we don't expect.  Try to unlink it
                  * anyway.
                  */
-                warn!(log, "file {} exists, of type {:?}, unlinking",
-                    dst.display(), fi.filetype);
+                warn!(
+                    "file {} exists, of type {:?}, unlinking",
+                    dst.display(),
+                    fi.filetype
+                );
                 std::fs::remove_file(dst)?;
                 true
             }
         }
     } else {
-        info!(log, "file {} does not exist", dst.display());
+        info!("file {} does not exist", dst.display());
         true
     };
 
     if do_copy {
         did_work = true;
-        info!(log, "writing {} ...", dst.display());
+        info!("writing {} ...", dst.display());
 
         let mut f = std::fs::OpenOptions::new()
             .create_new(true)
@@ -373,17 +380,22 @@ pub fn filestr<P: AsRef<Path>>(log: &Logger, contents: &str, dst: P,
         f.flush()?;
     }
 
-    if perms(log, dst, owner, group, mode)? {
+    if perms(dst, owner, group, mode)? {
         did_work = true;
     }
 
-    info!(log, "ok!");
+    info!("ok!");
     Ok(did_work)
 }
 
-pub fn file<P1: AsRef<Path>, P2: AsRef<Path>>(log: &Logger, src: P1, dst: P2,
-    owner: u32, group: u32, mode: u32, create: Create) -> Result<bool>
-{
+pub fn file<P1: AsRef<Path>, P2: AsRef<Path>>(
+    src: P1,
+    dst: P2,
+    owner: u32,
+    group: u32,
+    mode: u32,
+    create: Create,
+) -> Result<bool> {
     let src = src.as_ref();
     let dst = dst.as_ref();
     let mut did_work = false;
@@ -394,13 +406,11 @@ pub fn file<P1: AsRef<Path>, P2: AsRef<Path>>(log: &Logger, src: P1, dst: P2,
          */
         match create {
             Create::IfMissing if fi.filetype == FileType::File => {
-                info!(log, "file {} exists, skipping population",
-                    dst.display());
+                info!("file {} exists, skipping population", dst.display());
                 false
             }
             Create::IfMissing if fi.filetype == FileType::Link => {
-                warn!(log, "symlink {} exists, skipping population",
-                    dst.display());
+                warn!("symlink {} exists, skipping population", dst.display());
                 false
             }
             Create::IfMissing => {
@@ -408,8 +418,11 @@ pub fn file<P1: AsRef<Path>, P2: AsRef<Path>>(log: &Logger, src: P1, dst: P2,
                  * Avoid clobbering an unexpected entry when we have been asked
                  * to preserve in the face of modifications.
                  */
-                bail!("{} should be a file, but is a {:?}",
-                    dst.display(), fi.filetype);
+                bail!(
+                    "{} should be a file, but is a {:?}",
+                    dst.display(),
+                    fi.filetype
+                );
             }
             Create::Always if fi.filetype == FileType::File => {
                 /*
@@ -417,12 +430,13 @@ pub fn file<P1: AsRef<Path>, P2: AsRef<Path>>(log: &Logger, src: P1, dst: P2,
                  * what we expect.
                  */
                 if compare(src, dst)? {
-                    info!(log, "file {} exists, with correct contents",
-                        dst.display());
+                    info!("file {} exists, with correct contents", dst.display());
                     false
                 } else {
-                    warn!(log, "file {} exists, with wrong contents, unlinking",
-                        dst.display());
+                    warn!(
+                        "file {} exists, with wrong contents, unlinking",
+                        dst.display()
+                    );
                     std::fs::remove_file(dst)?;
                     true
                 }
@@ -432,35 +446,40 @@ pub fn file<P1: AsRef<Path>, P2: AsRef<Path>>(log: &Logger, src: P1, dst: P2,
                  * We found a file type we don't expect.  Try to unlink it
                  * anyway.
                  */
-                warn!(log, "file {} exists, of type {:?}, unlinking",
-                    dst.display(), fi.filetype);
+                warn!(
+                    "file {} exists, of type {:?}, unlinking",
+                    dst.display(),
+                    fi.filetype
+                );
                 std::fs::remove_file(dst)?;
                 true
             }
         }
     } else {
-        info!(log, "file {} does not exist", dst.display());
+        info!("file {} does not exist", dst.display());
         true
     };
 
     if do_copy {
         did_work = true;
-        info!(log, "copying {} -> {} ...", src.display(), dst.display());
+        info!("copying {} -> {} ...", src.display(), dst.display());
         std::fs::copy(src, dst)?;
     }
 
-    if perms(log, dst, owner, group, mode)? {
+    if perms(dst, owner, group, mode)? {
         did_work = true;
     }
 
-    info!(log, "ok!");
+    info!("ok!");
     Ok(did_work)
 }
 
-pub fn symlink<P1: AsRef<Path>, P2: AsRef<Path>>(log: &Logger, dst: P1,
-    target: P2, owner: u32, group: u32)
-    -> Result<bool>
-{
+pub fn symlink<P1: AsRef<Path>, P2: AsRef<Path>>(
+    dst: P1,
+    target: P2,
+    owner: u32,
+    group: u32,
+) -> Result<bool> {
     let dst = dst.as_ref();
     let target = target.as_ref();
     let mut did_work = false;
@@ -469,11 +488,14 @@ pub fn symlink<P1: AsRef<Path>, P2: AsRef<Path>>(log: &Logger, dst: P1,
         if fi.filetype == FileType::Link {
             let fitarget = fi.target.unwrap();
             if fitarget == target {
-                info!(log, "link target ok ({})", target.display());
+                info!("link target ok ({})", target.display());
                 false
             } else {
-                warn!(log, "link target wrong: want {}, got {}; unlinking",
-                    target.display(), fitarget.display());
+                warn!(
+                    "link target wrong: want {}, got {}; unlinking",
+                    target.display(),
+                    fitarget.display()
+                );
                 std::fs::remove_file(dst)?;
                 true
             }
@@ -481,27 +503,30 @@ pub fn symlink<P1: AsRef<Path>, P2: AsRef<Path>>(log: &Logger, dst: P1,
             /*
              * File type not correct.  Unlink.
              */
-            warn!(log, "file {} exists, of type {:?}, unlinking",
-                dst.display(), fi.filetype);
+            warn!(
+                "file {} exists, of type {:?}, unlinking",
+                dst.display(),
+                fi.filetype
+            );
             std::fs::remove_file(dst)?;
             true
         }
     } else {
-        info!(log, "link {} does not exist", dst.display());
+        info!("link {} does not exist", dst.display());
         true
     };
 
     if do_link {
         did_work = true;
-        info!(log, "linking {} -> {} ...", dst.display(), target.display());
+        info!("linking {} -> {} ...", dst.display(), target.display());
         std::os::unix::fs::symlink(target, dst)?;
     }
 
-    if perms(log, dst, owner, group, 0)? {
+    if perms(dst, owner, group, 0)? {
         did_work = true;
     }
 
-    info!(log, "ok!");
+    info!("ok!");
     Ok(did_work)
 }
 
@@ -540,8 +565,7 @@ pub fn hash_file<P: AsRef<Path>>(p: P, hashtype: &HashType) -> Result<String> {
     Ok(out)
 }
 
-fn spawn_reader<T>(log: &Logger, name: &str, stream: Option<T>)
-    -> Option<std::thread::JoinHandle<()>>
+fn spawn_reader<T>(name: &str, stream: Option<T>) -> Option<std::thread::JoinHandle<()>>
 where
     T: Read + Send + 'static,
 {
@@ -550,8 +574,6 @@ where
         Some(stream) => stream,
         None => return None,
     };
-
-    let log = log.clone();
 
     Some(std::thread::spawn(move || {
         let mut r = BufReader::new(stream);
@@ -570,11 +592,11 @@ where
                     let s = buf.trim();
 
                     if !s.is_empty() {
-                        info!(log, "{}| {}", name, s);
+                        info!("{}| {}", name, s);
                     }
                 }
                 Err(e) => {
-                    error!(log, "failed to read {}: {}", name, e);
+                    error!("failed to read {}: {}", name, e);
                     std::process::exit(100);
                 }
             }
@@ -582,13 +604,12 @@ where
     }))
 }
 
-pub fn run<S: AsRef<str>>(log: &Logger, args: &[S]) -> Result<()> {
+pub fn run<S: AsRef<str>>(args: &[S]) -> Result<()> {
     let envs: Option<std::collections::HashMap<String, String>> = None;
-    run_envs(log, args, envs)
+    run_envs(args, envs)
 }
 
-pub fn run_envs<S, SI, I, K, V>(log: &Logger, args: SI, env: Option<I>)
-    -> Result<()>
+pub fn run_envs<S, SI, I, K, V>(args: SI, env: Option<I>) -> Result<()>
 where
     S: AsRef<str>,
     SI: IntoIterator<Item = S>,
@@ -596,10 +617,7 @@ where
     K: AsRef<std::ffi::OsStr> + Eq + std::hash::Hash + std::fmt::Debug,
     V: AsRef<std::ffi::OsStr> + std::fmt::Debug,
 {
-    let args: Vec<String> = args
-        .into_iter()
-        .map(|s| s.as_ref().to_string())
-        .collect();
+    let args: Vec<String> = args.into_iter().map(|s| s.as_ref().to_string()).collect();
 
     let env = if let Some(env) = env {
         let env: std::collections::HashMap<_, _> = env.into_iter().collect();
@@ -631,15 +649,15 @@ where
     cmd.stderr(Stdio::piped());
 
     if let Some(env) = &env {
-        info!(log, "exec: {:?}", &args; "env" => ?env);
+        info!("env=\"{:?}\" exec: {:?}", env, &args);
     } else {
-        info!(log, "exec: {:?}", &args);
+        info!("exec: {:?}", &args);
     }
 
     let mut child = cmd.spawn()?;
 
-    let readout = spawn_reader(log, "O", child.stdout.take());
-    let readerr = spawn_reader(log, "E", child.stderr.take());
+    let readout = spawn_reader("O", child.stdout.take());
+    let readerr = spawn_reader("E", child.stderr.take());
 
     if let Some(t) = readout {
         t.join().expect("join stdout thread");
