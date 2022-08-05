@@ -543,7 +543,7 @@ pub fn snapshot_rollback(dataset: &str, snapshot: &str) -> Result<bool> {
     Ok(true)
 }
 
-pub fn dataset_clone(snapshot: &str, dataset: &str, force: bool, opts: Option<[&str]>) -> Result<()> {
+pub fn dataset_clone(snapshot: &str, dataset: &str, force: bool, opts: Option<Vec<String>>) -> Result<()> {
     if snapshot.contains('@') {
         bail!("snapshot {} does not seem to be a snapshot", snapshot);
     }
