@@ -573,6 +573,8 @@ pub fn dataset_clone(snapshot: &str, dataset: &str, force: bool, opts: Option<Ve
         let errmsg = String::from_utf8_lossy(&zfs.stderr);
         bail!("zfs create failed: {}", errmsg);
     }
+
+    Ok(())
 }
 
 pub fn dataset_create(dataset: &str, parents: bool) -> Result<()> {
