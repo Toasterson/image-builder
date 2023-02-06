@@ -13,9 +13,9 @@ use std::process::{Command, Stdio};
 
 pub mod ensure;
 pub mod expand;
-mod fmri;
-mod illumos;
-mod lofi;
+pub mod fmri;
+pub mod illumos;
+pub mod lofi;
 
 use ensure::{Create};
 use expand::Expansion;
@@ -25,7 +25,7 @@ pub type Build = fn(ib: &mut ImageBuilder) -> Result<()>;
 /*
  * Hard-coded user ID and group ID for root:
  */
-const ROOT: u32 = 0;
+pub const ROOT: u32 = 0;
 
 /*
  * We cannot correctly use the name service switch to translate user IDs for use

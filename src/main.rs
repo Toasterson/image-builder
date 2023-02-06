@@ -9,8 +9,12 @@ use slog_scope::{set_global_logger, GlobalLoggerGuard};
 use slog_syslog::Facility;
 use slog_term::{CompactFormat, TermDecorator};
 use slog_scope::crit;
-use imagebuilder::*;
-use imagebuilder::expand::Expansion;
+use illumos_image_builder::*;
+use illumos_image_builder::expand::Expansion;
+use illumos_image_builder::ROOT;
+use illumos_image_builder::ensure::{Create, HashType};
+use serde::{Deserialize};
+use std::path::PathBuf;
 
 fn init_slog_logging(use_syslog: bool) -> Result<GlobalLoggerGuard> {
     if use_syslog {
