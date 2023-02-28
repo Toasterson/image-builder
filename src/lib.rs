@@ -17,7 +17,7 @@ pub mod fmri;
 pub mod illumos;
 pub mod lofi;
 
-use ensure::{Create};
+use ensure::Create;
 use expand::Expansion;
 
 pub type Build = fn(ib: &mut ImageBuilder) -> Result<()>;
@@ -543,8 +543,13 @@ pub fn snapshot_rollback(dataset: &str, snapshot: &str) -> Result<bool> {
     Ok(true)
 }
 
-pub fn dataset_clone(snapshot: &str, dataset: &str, force: bool, opts: Option<Vec<String>>) -> Result<()> {
-    if snapshot.contains('@') {
+pub fn dataset_clone(
+    snapshot: &str,
+    dataset: &str,
+    force: bool,
+    opts: Option<Vec<String>>,
+) -> Result<()> {
+    if !snapshot.contains('@') {
         bail!("snapshot {} does not seem to be a snapshot", snapshot);
     }
 
@@ -864,7 +869,7 @@ pub fn seed_smf(
 
 #[derive(Clone, PartialEq)]
 pub struct ShadowFile {
-   pub entries: Vec<Vec<String>>,
+    pub entries: Vec<Vec<String>>,
 }
 
 impl ShadowFile {
@@ -956,7 +961,7 @@ pub struct ImageBuilder {
 
     pub svccfg: String,
 
-   pub features: HashMap<String, String>,
+    pub features: HashMap<String, String>,
 }
 
 impl ImageBuilder {
