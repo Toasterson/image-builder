@@ -543,12 +543,7 @@ pub fn snapshot_rollback(dataset: &str, snapshot: &str) -> Result<bool> {
     Ok(true)
 }
 
-pub fn dataset_clone(
-    snapshot: &str,
-    dataset: &str,
-    force: bool,
-    opts: Option<Vec<String>>,
-) -> Result<()> {
+pub fn dataset_clone(snapshot: &str, dataset: &str, opts: Option<Vec<String>>) -> Result<()> {
     if !snapshot.contains('@') {
         bail!("snapshot {} does not seem to be a snapshot", snapshot);
     }
@@ -558,10 +553,6 @@ pub fn dataset_clone(
     let mut cmd = Command::new("/sbin/zfs");
     cmd.env_clear();
     cmd.arg("clone");
-
-    if force {
-        cmd.arg("-F");
-    }
 
     if let Some(opts) = opts {
         for opt in opts {
